@@ -44,14 +44,14 @@ def train_embedder(data, *, max_iteration=config.max_iteration,
 								train_batch_size=config.train_batch_size,
 									val_batch_size=config.val_batch_size,
 										embedding_size=config.embedding_size):
-
+	if not os.path.exists(config.LOG_DIR):
+		os.makedirs(config.LOG_DIR)
 	data_handler = DataHandler(data) # Pandas format data
 	data_handler.save_metadata()
 
 	batch_generator = TrainValBatchGenerator(data=data_handler.onehot_encoded_data.as_matrix(),
 												train_batch_size=train_batch_size,
 													val_batch_size=val_batch_size)
-
 	with tf.Session() as sess:
 		inputs = tf.placeholder(tf.int32, shape=[None, data_handler.num_of_vars]) # (num_vars - 1) + 1 instance_id
 		target = tf.placeholder(tf.int32, shape=[None, 1])

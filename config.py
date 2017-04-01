@@ -1,4 +1,5 @@
-LOG_DIR = 'C://Users/Wook/Desktop/embedding/log/'
+
+LOG_DIR = './embedding/log/'
 metadata_filename = 'metadata.tsv'
 model_save_filename = 'model.ckpt'
 
