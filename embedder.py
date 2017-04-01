@@ -7,7 +7,7 @@ from data_handler import DataHandler
 
 class Embedder:
 
-	def __init__(self, *, inputs, target, num_instances, num_of_vars, total_num_of_bins, embedding_size):
+	def __init__(self, *, inputs, target, num_instances, num_of_vars, total_num_of_bins, num_of_bins_by_var, embedding_size):
 
 		with tf.variable_scope('embedding_layer'):
 			self.variable_embeddings =  tf.get_variable(name='variable_embeddings',
@@ -17,22 +17,34 @@ class Embedder:
 															shape=[num_instances, embedding_size],
 																initializer=tf.random_normal_initializer())
 
-		with tf.variable_scope('output_layer'):
-			softmax_weights = tf.get_variable(name='softmax_weights',
-												shape=[embedding_size, total_num_of_bins],
-													initializer=tf.truncated_normal_initializer())
-			softmax_biases = tf.get_variable(name='softmax_biases',
-												shape=[total_num_of_bins],
-													initializer=tf.zeros_initializer())
-
 		embed_variable = tf.nn.embedding_lookup(self.variable_embeddings, inputs[:,:num_of_vars-1])
 		embed_instance = tf.nn.embedding_lookup(self.instance_embeddings, inputs[:,num_of_vars-1])
-		embedding = tf.reduce_sum(embed_variable, reduction_indices=1) + embed_instance
+		embedding = tf.add(tf.reduce_sum(embed_variable, reduction_indices=1), embed_instance)
 
-		logits = tf.matmul(embedding, softmax_weights) + softmax_biases
-		onehot_target = tf.squeeze(tf.one_hot(indices=target, depth=total_num_of_bins), 1)
+		with tf.variable_scope('output_layer'):
+			
+			cum_var_num = 0
+			losses = []
 
-		self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=onehot_target))
+			for i, num_of_bin_in_var in enumerate(num_of_bins_by_var):
+				onehot_target = tf.squeeze(tf.one_hot(indices=target, depth=total_num_of_bins), 1)
+				
+				batch_size = 30
+
+				with tf.variable_scope('var_{}'.format(i)):
+					softmax_weights = tf.get_variable(name='softmax_weights',
+														shape=[embedding_size, num_of_bin_in_var],
+															initializer=tf.truncated_normal_initializer())
+					softmax_biases = tf.get_variable(name='softmax_biases',
+														shape=[num_of_bin_in_var],
+															initializer=tf.zeros_initializer())
+					logits = tf.matmul(embedding, softmax_weights) + softmax_biases
+					onehot_target_for_var = tf.slice(onehot_target, [0,cum_var_num], [batch_size, num_of_bin_in_var])
+					cum_var_num += num_of_bin_in_var
+					losses.append(tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, 
+																						labels=onehot_target_for_var,
+																						name='loss')))
+		self.loss = sum(losses)
 		self.optimizer = tf.train.GradientDescentOptimizer(config.learning_rate).minimize(self.loss)
 		self.predictions = tf.equal(tf.argmax(logits, 1), tf.argmax(onehot_target, 1))
 		self.accuracy = tf.reduce_mean(tf.cast(self.predictions, "float"))
@@ -62,6 +74,7 @@ def train_embedder(data, *, max_iteration=config.max_iteration,
 								num_instances=data_handler.num_instances,
 								num_of_vars=data_handler.num_of_vars,
 								total_num_of_bins=data_handler.total_num_of_bins,
+								num_of_bins_by_var=data_handler.num_of_bins_by_var,
 								embedding_size=embedding_size)
 		sess.run(embedder.init)
 
