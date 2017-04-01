@@ -1,7 +1,9 @@
 import pandas as pd
 from embedder import train_embedder
-import urllib.request
-url = 'https://vincentarelbundock.github.io/Rdatasets/csv/car/Davis.csv'
-response = urllib.request.urlopen(url)
-data = pd.read_csv(response, header=0)[['weight','height','sex']]
+
+# data = pd.read_csv('data/Davis.csv')[['weight','height','sex']]
+
+data = pd.read_csv('data/Mushroom.csv').drop('class',axis=1)
+
+
 train_embedder(data)
