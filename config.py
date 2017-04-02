@@ -10,5 +10,5 @@ learning_rate = 0.01
 max_iteration = 100000
 print_loss_every = 5000
 
-train_batch_size=2
-val_batch_size=2
+train_batch_size=3
+val_batch_size=3
