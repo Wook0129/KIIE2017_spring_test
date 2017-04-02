@@ -4,12 +4,11 @@ import numpy as np
 class TrainValBatchGenerator:
 
     # Expect 2-d Integer array
-    def __init__(self, data, val_ratio=0.2, *, train_batch_size, val_batch_size, num_of_values_in_vars):
+    def __init__(self, data, val_ratio=0.2, *, train_batch_size, val_batch_size, metadata):
         self._data = data
         train_idx, val_idx = self._train_val_idx_split(val_ratio)
-        self._train_batch_generator = BatchGenerator(data[train_idx], train_batch_size, num_of_values_in_vars)
-        self._val_batch_generator = BatchGenerator(data[val_idx], val_batch_size, num_of_values_in_vars)
-        self._num_of_values_in_vars = num_of_values_in_vars
+        self._train_batch_generator = BatchGenerator(data[train_idx], train_batch_size, metadata)
+        self._val_batch_generator = BatchGenerator(data[val_idx], val_batch_size, metadata)
     
     def _train_val_idx_split(self, val_ratio):
         idxs = np.arange(len(self._data))
@@ -28,10 +27,12 @@ class TrainValBatchGenerator:
 
 class BatchGenerator:
 
-    def __init__(self, data, batch_size, num_of_values_in_vars):
+    def __init__(self, data, batch_size, metadata):
         self.data = data
         self.batch_size = batch_size
-        self.num_of_values_in_vars = num_of_values_in_vars
+        self.num_of_vars = metadata['num_of_vars']
+        self.num_of_bins_by_vars = metadata['num_of_bins_by_var']
+        self.var_idx_to_bin_idxs = metadata['var_idx_to_bin_idxs']
         self.cum_num_of_bins = 0
         self.iter = self.make_random_iter()
         
@@ -49,8 +50,8 @@ class BatchGenerator:
 
         list_of_samples_per_var = []
 
-        for var_idx, num in enumerate(self.num_of_values_in_vars):
-            idx_range = [i for i in range(0, sum(self.num_of_values_in_vars))]
+        for var_idx, num in enumerate(self.num_of_bins_by_vars):
+            idx_range = [i for i in range(0, sum(self.num_of_bins_by_vars))]
             input_vars_idx_range = idx_range[ : self.cum_num_of_bins] + idx_range[self.cum_num_of_bins + num : ]
             target_vars_idx_range = idx_range[self.cum_num_of_bins : self.cum_num_of_bins + num]
             
@@ -65,13 +66,18 @@ class BatchGenerator:
             
             inputs = []
             targets = []
-            
-            for input_instance, instance_id in zip(input_instances, rand_instance_ids):
+            for input_instance in input_instances:
+                
+                # Randomly Corrupt a Variable
+                var_idxs =  [i for i in range(0, self.num_of_vars)]
+                corrupt_var_idx = np.random.choice(var_idxs[:var_idx] + var_idxs[var_idx+1:])
+                corrupt_bin_idxs = self.var_idx_to_bin_idxs[corrupt_var_idx]
+                
                 input_var_idxs = []
                 for idx, value in enumerate(input_instance):
-                    if value == 1:
+                    if (value == 1) and (idx not in corrupt_bin_idxs):
                         input_var_idxs.append(idx)
-                input_var_idxs.append(instance_id)
+                input_var_idxs.append(corrupt_var_idx)
                 inputs.append(input_var_idxs)
                 
             for target_instance in target_instances:
@@ -79,7 +85,7 @@ class BatchGenerator:
                     if value == 1:
                         targets.append([idx])
                         break
-                        
+
             list_of_samples_per_var.append([np.array(inputs), np.array(targets)])
             self.cum_num_of_bins += num
             
