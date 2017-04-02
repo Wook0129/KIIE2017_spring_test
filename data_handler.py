@@ -34,6 +34,7 @@ class DataHandler:
             # Count Bin Numbers by Variables
             self.num_of_bins_by_var.append(len(bin_idxs))
         # Calculate Proportions of Bins In Each Variable
+        # TODO: This Statistic Should be Calculated with ONLY TRAINING DATA !
             bins_related_with_var = [bin_name for bin_name in self.bin_names if var_name in bin_name]
             self.proportion_of_bins_by_var[var_idx] = list(self.onehot_encoded_data[bins_related_with_var].mean(axis=0))
     

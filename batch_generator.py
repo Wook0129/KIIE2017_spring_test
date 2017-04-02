@@ -83,7 +83,7 @@ class BatchGenerator:
             for target_instance in target_instances:
                 for idx, value in enumerate(target_instance):
                     if value == 1:
-                        targets.append([idx])
+                        targets.append(idx)
                         break
 
             list_of_samples_per_var.append([np.array(inputs), np.array(targets)])
