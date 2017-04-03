@@ -90,7 +90,7 @@ def train_embedder(data, *, max_iteration=config.max_iteration,
     batch_generator = TrainValBatchGenerator(
         data=data_handler.onehot_encoded_data.as_matrix(),
         train_batch_size=train_batch_size,
-        val_batch_size=val_batch_size, metadata=data_handler.get_metadata()
+        val_batch_size=val_batch_size, data_handler=data_handler.get_metadata()
         )
 
     with tf.Session() as sess:

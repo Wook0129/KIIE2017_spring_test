@@ -2,13 +2,13 @@ import numpy as np
 
 
 class TrainValBatchGenerator:
-    # Expect 2-d Integer array
-    def __init__(self, data, val_ratio=0.2, *, train_batch_size, val_batch_size, metadata):
-        self._data = data
+
+    def __init__(self, val_ratio=0.2, *, train_batch_size, val_batch_size, data_handler):
+        self._data = data_handler.data
         train_idx, val_idx = self._train_val_idx_split(val_ratio)
-        self._train_batch_generator = BatchGenerator(data[train_idx], train_batch_size,
-                                                     metadata)
-        self._val_batch_generator = BatchGenerator(data[val_idx], val_batch_size, metadata)
+        self._train_batch_generator = BatchGenerator(self._data.loc[train_idx],
+                                                     train_batch_size)
+        self._val_batch_generator = BatchGenerator(self._data.loc[val_idx], val_batch_size)
 
     def _train_val_idx_split(self, val_ratio):
         idxs = np.arange(len(self._data))
@@ -26,14 +26,9 @@ class TrainValBatchGenerator:
 
 
 class BatchGenerator:
-    def __init__(self, data, batch_size, metadata):
+    def __init__(self, data, batch_size):
         self.data = data
         self.batch_size = batch_size
-        self.num_of_vars = metadata['num_of_vars']
-        self.num_of_bins_by_vars = metadata['num_of_bins_by_var']
-        self.var_idx_to_bin_idxs = metadata['var_idx_to_bin_idxs']
-        self.proportion_of_bins_by_var = metadata['proportion_of_bins_by_var']
-        self.cum_num_of_bins = 0
         self.iter = self.make_random_iter()
 
     def make_random_iter(self):
@@ -41,59 +36,55 @@ class BatchGenerator:
         it = np.split(np.random.permutation(range(len(self.data))), splits)[:-1]
         return iter(it)
 
-    def next_batch(self):
+    def next_batch(self, corruption_ratio=0.1):
         try:
             rand_instance_ids = next(self.iter)
         except StopIteration:
             self.iter = self.make_random_iter()
             rand_instance_ids = next(self.iter)
 
-        self.cum_num_of_bins = 0
-        list_of_samples_per_var = []
+        batch = []
 
-        for var_idx, num in enumerate(self.num_of_bins_by_vars):
-            idx_range = [i for i in range(0, sum(self.num_of_bins_by_vars))]
-            input_vars_idx_range = idx_range[: self.cum_num_of_bins] + idx_range[
-                                                                       self.cum_num_of_bins + num:]
-            target_vars_idx_range = self.var_idx_to_bin_idxs[var_idx]
+        num_of_vars = self.data.shape[1]
+        num_corruption = int(num_of_vars * corruption_ratio)
 
-            input_instances = []
-            target_instances = []
-            for instance_id in rand_instance_ids:
-                instance = self.data[instance_id]
-                input_instances.append(
-                    [i for i, x in enumerate(instance) if (i in input_vars_idx_range)
-                     and (x==1)])
-            for instance_id in rand_instance_ids:
-                instance = self.data[instance_id]
-                target_instances.append(
-                    [x for i, x in enumerate(instance) if i in target_vars_idx_range])
+        for target_var_idx in range(num_of_vars):
+            # Randomly Corrupt Variables
 
-            inputs = []
-            targets = []
-            for input_instance in input_instances:
+            var_idxs = [i for i in range(0, num_of_vars)]
+            idx_exclude_target_idx = var_idxs[:target_var_idx] + var_idxs[target_var_idx + 1:]
+            corrupt_var_idxs = np.random.choice(idx_exclude_target_idx, num_corruption,
+                                                replace=False)
 
-                # Randomly Corrupt a Variable
-                var_idxs = [i for i in range(0, self.num_of_vars)]
-                corrupt_var_idx = np.random.choice(
-                    var_idxs[:var_idx] + var_idxs[var_idx + 1:])
-                corrupt_bin_idxs = self.var_idx_to_bin_idxs[corrupt_var_idx]
+            input_vars = self.data.iloc[rand_instance_ids, [x for x in
+                                                           idx_exclude_target_idx if x not
+                                                           in corrupt_var_idxs]]
+            corrupt_vars = self.data.iloc[rand_instance_ids, corrupt_var_idxs]
+            target_var = self.data.iloc[rand_instance_ids, target_var_idx]
 
-                input_var_idxs = []
-                for idx in input_instance:
-                    if idx not in corrupt_bin_idxs:
-                        input_var_idxs.append(idx)
-                input_var_idxs.append(self.var_idx_to_bin_idxs[corrupt_var_idx])
-                input_var_idxs.append(self.proportion_of_bins_by_var[corrupt_var_idx])
-                inputs.append(input_var_idxs)
+            batch.append([input_vars.values, corrupt_vars.values, target_var.values])
 
-            for target_instance in target_instances:
-                for idx, value in enumerate(target_instance):
-                    if value == 1:
-                        targets.append(idx)
-                        break
+        return batch
 
-            list_of_samples_per_var.append([inputs, targets])
-            self.cum_num_of_bins += num
 
-        return list_of_samples_per_var
+#TODO corrupt랑 target에서 variable_value_index가 뽑히면 같은 varaible_index에 해당하는,
+#variable_value_index로 가지고 오기
+
+#TODO target을 0~len(variable_value_index)로 바꾸기
+
+import pandas as pd
+from data_handler import DataHandler
+data = pd.read_csv('data/Mushroom.csv').drop('class',axis=1)
+data_handler = DataHandler(data)
+gen = TrainValBatchGenerator(train_batch_size=3, val_batch_size=1,
+                             data_handler=data_handler)
+temp = gen.next_train_batch()
+
+for num, i in enumerate(temp):
+    input_var, corrupt_var, target_var = i
+    if sum([len(x) for x in input_var]) != 57:
+        print(num, 'he')
+    assert sum([len(x) for x in input_var]) == 57
+    assert sum([len(x) for x in corrupt_var]) == 6
+    assert len(target_var) == 3
+
