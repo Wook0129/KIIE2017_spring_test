@@ -19,6 +19,12 @@ class DataHandler:
             value_proportions = [count / total_count for count in value_count]
             self.proportion_of_bins_by_var[i] = value_proportions
 
+        self.var_idx_to_value_idxs = dict()
+        cum_idx = 0
+        for i,x in enumerate(self.num_of_values_by_var):
+            self.var_idx_to_value_idxs[i]=(list(range(cum_idx, cum_idx+x)))
+            cum_idx += x
+
     def preprocess_for_embedding(self, data):
         unique_dict = dict()
         index_counter = 0
