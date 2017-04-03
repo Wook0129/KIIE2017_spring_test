@@ -1,23 +1,24 @@
 from collections import Counter
-
+import pandas as pd
 
 class DataHandler:
     # Expect Pandas Type Data
     def __init__(self, data):
+        assert isinstance(data, pd.DataFrame)
         self.data, self.variable_value_dictionary = self.preprocess_for_embedding(data)
         self.num_instances = data.shape[0]
         self.num_of_vars = data.shape[1]
         self.var_names = data.columns
         self.num_of_values_by_var = [len(x) for x in
                                     self.variable_value_dictionary.values()]
-        self.total_num_of_bins = sum(self.num_of_values_by_var)
+        self.total_num_of_values = sum(self.num_of_values_by_var)
 
-        self.proportion_of_bins_by_var = dict()
+        self.proportion_of_values_by_var = dict()
         for i, values in self.variable_value_dictionary.items():
             value_count = list(Counter(self.data.iloc[:,i]).values())
             total_count = sum(value_count)
             value_proportions = [count / total_count for count in value_count]
-            self.proportion_of_bins_by_var[i] = value_proportions
+            self.proportion_of_values_by_var[i] = value_proportions
 
         self.var_idx_to_value_idxs = dict()
         cum_idx = 0
