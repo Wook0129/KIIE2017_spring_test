@@ -21,7 +21,7 @@ class Embedder:
             self.variable_embeddings = tf.get_variable(name='variable_embeddings',
                                                        shape=[total_num_of_values,
                                                               embedding_size],
-                                                       initializer=tf.random_normal_initializer())
+                                                       initializer=tf.truncated_normal_initializer())
 
         embed_variable_all =tf.nn.embedding_lookup(self.variable_embeddings,
                                                    np.arange(total_num_of_values))
@@ -65,8 +65,7 @@ class Embedder:
                 loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                     logits=logits,labels=target,name='loss'))
                 self.loss[var_idx] = loss
-                # self.summary[var_idx].append(tf.summary.scalar('loss_{}'.format(var_idx),
-                #                                        self.loss[var_idx]))
+
             if self.is_training:
                 with tf.variable_scope('train'):
                     self.optimizer[var_idx] = tf.train.AdamOptimizer().minimize(loss)
@@ -76,8 +75,6 @@ class Embedder:
                 self.accuracy[var_idx] = tf.reduce_mean(
                     tf.cast(tf.equal(self.predictions[var_idx], target), tf.float32),
                     name='accuracy')
-                # self.summary[var_idx].append(tf.summary.scalar('accuracy_{}'.format(
-                #     var_idx), self.accuracy[var_idx]))
 
             with tf.variable_scope('metrics'):
                 for var_value in range(num_of_values_in_var):
@@ -92,21 +89,11 @@ class Embedder:
                     f1 = 2 * precision * recall / (recall +
                                                    precision)
 
-                    self.summary_op[var_idx].append(update_recall)
-                    self.summary_op[var_idx].append(update_precision)
-                    self.recall[var_idx] = recall
-                    self.precision[var_idx] = precision
-                    self.f1[var_idx] = f1
-
-                    # self.summary[var_idx].append(tf.summary.scalar('recall_{}_{}'.format(var_idx,
-                    #                                                           var_value), recall))
-                    #
-                    # self.summary[var_idx].append(tf.summary.scalar('precision_{}_{}'.format(var_idx,
-                    #                                                                         var_value),
-                    #                                                precision))
-                    # self.summary[var_idx].append(tf.summary.scalar('f1_{}_{}'.format(var_idx,
-                    #                                                           var_value),
-                    #                                                f1))
+                    self.summary_op[(var_idx, var_value)].append(update_recall)
+                    self.summary_op[(var_idx, var_value)].append(update_precision)
+                    self.recall[(var_idx, var_value)] = recall
+                    self.precision[(var_idx, var_value)] = precision
+                    self.f1[(var_idx, var_value)] = f1
 
     def add_summary(self, num_of_values_by_var, target_dict):
         for key, num_of_values_in_var in enumerate(num_of_values_by_var):
@@ -187,12 +174,12 @@ def train_embedder(data, configuration):
                 for var_value in range(num_of_values_in_var):
                     embedder_train.summary[key].append(
                         tf.summary.scalar('Train_recall_{}_{}'.format(key,var_value),
-                                          embedder_train.recall[key]))
+                                          embedder_train.recall[(key, var_value)]))
                     embedder_train.summary[key].append(
                         tf.summary.scalar('Train_precision_{}_{}'.format(key,var_value),
-                                          embedder_train.precision[key]))
+                                          embedder_train.precision[(key, var_value)]))
                     embedder_train.summary[key].append(tf.summary.scalar('Train_f1_{}_{}'.format(
-                        key, var_value),embedder_train.f1[key]))
+                        key, var_value),embedder_train.f1[(key, var_value)]))
 
 
         with tf.variable_scope('Embedder', reuse=True):
@@ -213,12 +200,12 @@ def train_embedder(data, configuration):
                 for var_value in range(num_of_values_in_var):
                     embedder_val.summary[key].append(
                         tf.summary.scalar('Validation_recall_{}_{}'.format(key,var_value),
-                                          embedder_val.recall[key]))
+                                          embedder_val.recall[(key, var_value)]))
                     embedder_val.summary[key].append(
                         tf.summary.scalar('Validation_precision_{}_{}'.format(key,var_value),
-                                          embedder_val.precision[key]))
+                                          embedder_val.precision[(key, var_value)]))
                     embedder_val.summary[key].append(tf.summary.scalar('Validation_f1_{}_{}'.format(
-                        key, var_value),embedder_val.f1[key]))
+                        key, var_value),embedder_val.f1[(key, var_value)]))
 
         saver = tf.train.Saver()
         sess.run(tf.global_variables_initializer())
@@ -229,37 +216,37 @@ def train_embedder(data, configuration):
 
         def eval(fetch, batch, data_type, print_fetch, summary_op=False):
             sum_fetch_value = 0
-            for key, vars_in_batch in enumerate(batch):
-                inputs_, corrupt_prop_matrix_, target_ = vars_in_batch
-                # if print_fetch in ['Recall', 'Precision']:
-                #     sess.run(model.summary_op[key], feed_dict={inputs:inputs_,
-                #                                              target_dict[key]:target_,
-                #                                               corrupt_prop_matrix:
-                #                                                   corrupt_prop_matrix_})
+            for vars_in_batch in batch:
+                for key in fetch.keys():
+                    if type(key) is tuple:
+                        target_key, _ = key
+                    else:
+                        target_key = key
+                    inputs_, corrupt_prop_matrix_, target_ = vars_in_batch
+                    fetch_value = sess.run(fetch[key], feed_dict={inputs:inputs_,
+                                                                 target_dict[
+                                                                     target_key]:target_,
+                                                                  corrupt_prop_matrix:
+                                                                      corrupt_prop_matrix_})
 
-                fetch_value = sess.run(fetch[key], feed_dict={inputs:inputs_,
-                                                             target_dict[key]:target_,
-                                                              corrupt_prop_matrix:
-                                                                  corrupt_prop_matrix_})
-
-                if print_fetch:
-                    print('{} {} at step {} key {} : {}'.format(data_type, print_fetch,
-                                                                i + 1,key,fetch_value))
-                    sum_fetch_value += fetch_value
-                if summary_op:
-                    for val in fetch_value:
-                        summary_writer.add_summary(val, i+1)
+                    if print_fetch:
+                        print('{} {} at step {} key {} : {}'.format(data_type, print_fetch,
+                                                                    i + 1,key,fetch_value))
+                        sum_fetch_value += fetch_value
+                    if summary_op:
+                        for val in fetch_value:
+                            summary_writer.add_summary(val, i+1)
 
             if print_fetch == 'Loss':
                 mean_evaluation_df[i//print_loss_every, 0] = sum_fetch_value / (key+ 1)
             elif print_fetch == 'Accuracy':
                 mean_evaluation_df[i//print_loss_every, 1] = sum_fetch_value / (key+ 1)
             elif print_fetch == 'Recall':
-                mean_evaluation_df[i // print_loss_every, 2] = sum_fetch_value / (key + 1)
+                mean_evaluation_df[i // print_loss_every, 2] = sum_fetch_value / (target_key + 1)
             elif print_fetch == 'Precision':
-                mean_evaluation_df[i // print_loss_every, 3] = sum_fetch_value / (key + 1)
+                mean_evaluation_df[i // print_loss_every, 3] = sum_fetch_value / (target_key + 1)
             elif print_fetch == 'f1':
-                mean_evaluation_df[i // print_loss_every, 4] = sum_fetch_value / (key + 1)
+                mean_evaluation_df[i // print_loss_every, 4] = sum_fetch_value / (target_key + 1)
 
         for i in range(max_iteration):
             batch_train = batch_generator.next_train_batch()
