@@ -5,19 +5,21 @@ import pandas as pd
 
 
 
-data_name = 'Mushroom'
+data_name = 'SPECT'
 print(data_name)
 
 data = pd.read_csv('data/{}.csv'.format(data_name)).drop('class',axis=1)
 
-embedding_size = 10
+embedding_size = 4
+corruption_ratio = 0.05
 config_data = Configuration(train_batch_size=128, val_batch_size=len(data) * 0.2,
                             embedding_size=embedding_size, max_iteration=10000,
-                            learning_rate=0.01, print_loss_every=500,
-                            LOG_DIR = './{}/embedding/{}/log/'.format(data_name, embedding_size),
+                            print_loss_every=500,
+                            LOG_DIR = './{}/embedding_{}/corruption_{}/log/'.format(
+                                data_name, embedding_size, corruption_ratio),
                             model_save_filename = 'model.ckpt',
                             metadata_filename = 'metadata.tsv',
-                            corruption_ratio=0.2)
+                            corruption_ratio=corruption_ratio)
 
 if not os.path.exists(config_data.LOG_DIR):
     os.makedirs(config_data.LOG_DIR)
