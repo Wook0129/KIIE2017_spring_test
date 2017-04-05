@@ -44,7 +44,9 @@ class BatchGenerator:
 
     def make_random_iter(self):
         splits = np.arange(self.batch_size, len(self.data), self.batch_size)
-        it = np.split(np.random.permutation(range(len(self.data))), splits)[:-1]
+        it = np.split(np.random.permutation(range(len(self.data))), splits)
+        if len(it) != 1:
+            it = np.split(np.random.permutation(range(len(self.data))), splits)[:-1]
         return iter(it)
 
     def next_batch(self, num_corruption, proportion_of_values_by_var):
