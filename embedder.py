@@ -7,7 +7,7 @@ import pandas as pd
 from collections import defaultdict
 
 
-class Embedder:
+class Embedder():
     def __init__(self, *, is_training, inputs, target_dict, corrupt_prop_matrix,
                  num_of_vars,
                  total_num_of_values,
@@ -42,7 +42,7 @@ class Embedder:
         self.precision = dict()
         self.f1 = dict()
         self.summary = defaultdict(lambda :list())
-        self.summary_op =defaultdict(lambda :list())
+        self.summary_update_op =defaultdict(lambda :list())
 
         for key, num_of_values_in_var in enumerate(num_of_values_by_var):
             self.add_output_layer(target=target_dict[key], var_idx=key,
@@ -89,29 +89,11 @@ class Embedder:
                     f1 = 2 * precision * recall / (recall +
                                                    precision)
 
-                    self.summary_op[(var_idx, var_value)].append(update_recall)
-                    self.summary_op[(var_idx, var_value)].append(update_precision)
+                    self.summary_update_op[(var_idx, var_value)].append(update_recall)
+                    self.summary_update_op[(var_idx, var_value)].append(update_precision)
                     self.recall[(var_idx, var_value)] = recall
                     self.precision[(var_idx, var_value)] = precision
                     self.f1[(var_idx, var_value)] = f1
-
-    def add_summary(self, num_of_values_by_var, target_dict):
-        for key, num_of_values_in_var in enumerate(num_of_values_by_var):
-            self.add_output_layer(target=target_dict[key], var_idx=key,
-                                            num_of_values_in_var=num_of_values_in_var)
-            self.summary[key].append(tf.summary.scalar('loss_{}'.format(
-                key), self.loss[key]))
-            self.summary[key].append(tf.summary.scalar('accuracy_{}'.format(
-                key), self.accuracy[key]))
-            for var_value in range(num_of_values_in_var):
-                self.summary[key].append(
-                    tf.summary.scalar('recall_{}_{}'.format(key, var_value),
-                                      self.recall))
-                self.summary[key].append(
-                    tf.summary.scalar('precision_{}_{}'.format(key, var_value),
-                                      self.precision))
-                self.summary[key].append(tf.summary.scalar('f1_{}_{}'.format(
-                    key, var_value), self.f1))
 
 
 # Train Embedding & Prepare for Visualization
@@ -137,8 +119,6 @@ def train_embedder(data, configuration):
         val_batch_size=val_batch_size, data_handler=data_handler,
         corruption_ratio=corruption_ratio
         )
-
-    mean_evaluation_df = np.zeros((int(max_iteration / print_loss_every), 5))
 
     sess_config = tf.ConfigProto()
     sess_config.gpu_options.allow_growth = True
@@ -214,70 +194,39 @@ def train_embedder(data, configuration):
         summary_writer = tf.summary.FileWriter(LOG_DIR)
         summary_writer.add_graph(tf.get_default_graph())
 
-        def eval(fetch, batch, data_type, print_fetch, summary_op=False):
-            sum_fetch_value = 0
-            for vars_in_batch in batch:
-                for key in fetch.keys():
-                    if type(key) is tuple:
-                        target_key, _ = key
-                    else:
-                        target_key = key
-                    inputs_, corrupt_prop_matrix_, target_ = vars_in_batch
-                    fetch_value = sess.run(fetch[key], feed_dict={inputs:inputs_,
-                                                                 target_dict[
-                                                                     target_key]:target_,
-                                                                  corrupt_prop_matrix:
-                                                                      corrupt_prop_matrix_})
-
-                    if print_fetch:
-                        print('{} {} at step {} key {} : {}'.format(data_type, print_fetch,
-                                                                    i + 1,key,fetch_value))
-                        sum_fetch_value += fetch_value
-                    if summary_op:
-                        for val in fetch_value:
-                            summary_writer.add_summary(val, i+1)
-
-            if print_fetch == 'Loss':
-                mean_evaluation_df[i//print_loss_every, 0] = sum_fetch_value / (key+ 1)
-            elif print_fetch == 'Accuracy':
-                mean_evaluation_df[i//print_loss_every, 1] = sum_fetch_value / (key+ 1)
-            elif print_fetch == 'Recall':
-                mean_evaluation_df[i // print_loss_every, 2] = sum_fetch_value / (target_key + 1)
-            elif print_fetch == 'Precision':
-                mean_evaluation_df[i // print_loss_every, 3] = sum_fetch_value / (target_key + 1)
-            elif print_fetch == 'f1':
-                mean_evaluation_df[i // print_loss_every, 4] = sum_fetch_value / (target_key + 1)
+        def eval(fetch_dict, batch, summary=False):
+            keys = list(fetch_dict.keys())
+            for var_idx, vars_in_batch in enumerate(batch):
+                if type(keys[0]) is tuple:
+                    fetch_value = [fetch_dict[x] for x in keys if x[0] == var_idx]
+                else:
+                    fetch_value = fetch_dict[var_idx]
+                inputs_, corrupt_prop_matrix_, target_ = vars_in_batch
+                fetch_value = sess.run(fetch_value,
+                                       feed_dict={inputs:inputs_,
+                                                  target_dict[var_idx]:target_,
+                                                  corrupt_prop_matrix:corrupt_prop_matrix_})
+                if summary:
+                    for val in fetch_value:
+                        summary_writer.add_summary(val, i+1)
 
         for i in range(max_iteration):
+            print('Epoch:', i)
             batch_train = batch_generator.next_train_batch()
 
-            eval(embedder_train.optimizer, batch_train, None, None)
+            eval(embedder_train.optimizer, batch_train)
 
             if (i + 1) % print_loss_every == 0:
-                eval(embedder_train.summary, batch_train, 'Train', None, True)
-                eval(embedder_train.loss, batch_train, 'Train', 'Loss')
-                eval(embedder_train.accuracy, batch_train, 'Train', 'Accuracy')
-                eval(embedder_train.summary_op, batch_train, None, None)
-                eval(embedder_train.recall, batch_train, 'Train', 'Recall')
-                eval(embedder_train.precision, batch_train, 'Train', 'Precision')
-                eval(embedder_train.f1, batch_train, 'Train', 'f1')
+                eval(embedder_train.summary_update_op, batch_train)
+                eval(embedder_train.summary, batch_train, True)
 
                 batch_val = batch_generator.next_val_batch()
-                eval(embedder_val.summary, batch_val, 'Validation', None, True)
-                eval(embedder_val.loss, batch_val, 'Validation', 'Loss')
-                eval(embedder_val.accuracy, batch_val, 'Validation', 'Accuracy')
-                eval(embedder_val.summary_op, batch_val, None, None)
-                eval(embedder_val.recall, batch_val, 'Validation', 'Recall')
-                eval(embedder_val.precision, batch_val, 'Validation', 'Precision')
-                eval(embedder_val.f1, batch_val, 'Validation', 'f1')
+                eval(embedder_val.summary_update_op, batch_val)
+                eval(embedder_val.summary, batch_val, True)
+
                 summary_writer.flush()
 
         saver.save(sess, save_path=os.path.join(LOG_DIR,model_save_filename),
                             global_step=(i + 1))
 
-        pd.DataFrame(mean_evaluation_df, columns=['loss', 'accuracy', 'recall',
-                                                  'precision', 'f1'],
-                     index=range(
-            print_loss_every, max_iteration+1, print_loss_every),
-        ).to_csv(os.path.join(LOG_DIR, 'loss_accuracy.csv'))
         summary_writer.close()
