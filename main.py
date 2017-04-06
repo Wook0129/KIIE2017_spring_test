@@ -5,18 +5,21 @@ import pandas as pd
 
 
 
-data_name = 'SPECT'
+data_name = 'CarEvaluation'
 print(data_name)
 
 data = pd.read_csv('data/{}.csv'.format(data_name)).drop('class',axis=1)
 
-embedding_size = 4
-corruption_ratio = 0.05
-config_data = Configuration(train_batch_size=128, val_batch_size=len(data) * 0.2,
-                            embedding_size=embedding_size, max_iteration=10000,
-                            print_loss_every=500,
-                            LOG_DIR = './{}/embedding_{}/corruption_{}/log/'.format(
-                                data_name, embedding_size, corruption_ratio),
+embedding_size = 20
+corruption_ratio = 0.20
+validation_corrupt = False
+config_data = Configuration(train_batch_size=128, val_batch_size= int(len(data) * 0.2),
+                            embedding_size=embedding_size, max_iteration=20000,
+                            print_loss_every=100,
+                            LOG_DIR = './{}/embedding_{}/corruption_{}/validation_{}/log/'.format(
+                                data_name, embedding_size, corruption_ratio,
+                                validation_corrupt),
+                            validation_corrupt = validation_corrupt,
                             model_save_filename = 'model.ckpt',
                             metadata_filename = 'metadata.tsv',
                             corruption_ratio=corruption_ratio)

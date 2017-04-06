@@ -111,13 +111,15 @@ def train_embedder(data, configuration):
     model_save_filename = configuration.model_save_filename
     metadata_filename = configuration.metadata_filename
     corruption_ratio = configuration.corruption_ratio
+    validation_corrupt = configuration.validation_corrupt
 
     data_handler = DataHandler(data)  # Pandas format data
     num_of_vars = data_handler.num_of_vars
     batch_generator = TrainValBatchGenerator(
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size, data_handler=data_handler,
-        corruption_ratio=corruption_ratio
+        corruption_ratio=corruption_ratio,
+        validation_corrupt=validation_corrupt
         )
 
     sess_config = tf.ConfigProto()
@@ -125,9 +127,12 @@ def train_embedder(data, configuration):
 
 
     with tf.Session(config=sess_config) as sess:
-        input_shape = num_of_vars - batch_generator.num_corruption - 1 #target
-        inputs = tf.placeholder(tf.int32, shape=[None,input_shape],name='input')
-
+        input_shape_train = num_of_vars - batch_generator.num_corruption_train - 1 #target
+        inputs_train = tf.placeholder(tf.int32, shape=[None,input_shape_train],
+                                      name='input_train')
+        input_shape_validation = num_of_vars - batch_generator.num_corruption_validation - 1
+        inputs_validation = tf.placeholder(tf.int32, shape=[None, input_shape_validation],
+                                          name='input_validation')
         corrupt_prop_matrix = tf.placeholder(tf.float32, shape=[None, data_handler.total_num_of_values],
                                         name='corrupt_input')
 
@@ -138,7 +143,7 @@ def train_embedder(data, configuration):
                                                   name='target_{}'.format(key))
         with tf.variable_scope('Embedder'):
             embedder_train = Embedder(is_training=True,
-                                      inputs=inputs,
+                                      inputs=inputs_train,
                                       num_of_vars=num_of_vars,
                                       total_num_of_values=data_handler.total_num_of_values,
                                       num_of_values_by_var=data_handler.num_of_values_by_var,
@@ -164,7 +169,7 @@ def train_embedder(data, configuration):
 
         with tf.variable_scope('Embedder', reuse=True):
             embedder_val = Embedder(is_training=False,
-                                    inputs=inputs,
+                                    inputs=inputs_validation,
                                     num_of_vars=num_of_vars,
                                     total_num_of_values=data_handler.total_num_of_values,
                                     num_of_values_by_var=data_handler.num_of_values_by_var,
@@ -194,16 +199,17 @@ def train_embedder(data, configuration):
         summary_writer = tf.summary.FileWriter(LOG_DIR)
         summary_writer.add_graph(tf.get_default_graph())
 
-        def eval(fetch_dict, batch, summary=False):
+        def eval(inputs_placeholder, fetch_dict, batch, summary=False,
+                 summary_update=False):
             keys = list(fetch_dict.keys())
             for var_idx, vars_in_batch in enumerate(batch):
-                if type(keys[0]) is tuple:
+                if summary_update:
                     fetch_value = [fetch_dict[x] for x in keys if x[0] == var_idx]
                 else:
                     fetch_value = fetch_dict[var_idx]
                 inputs_, corrupt_prop_matrix_, target_ = vars_in_batch
                 fetch_value = sess.run(fetch_value,
-                                       feed_dict={inputs:inputs_,
+                                       feed_dict={inputs_placeholder:inputs_,
                                                   target_dict[var_idx]:target_,
                                                   corrupt_prop_matrix:corrupt_prop_matrix_})
                 if summary:
@@ -214,15 +220,17 @@ def train_embedder(data, configuration):
             print('Epoch:', i)
             batch_train = batch_generator.next_train_batch()
 
-            eval(embedder_train.optimizer, batch_train)
+            eval(inputs_train, embedder_train.optimizer, batch_train)
 
             if (i + 1) % print_loss_every == 0:
-                eval(embedder_train.summary_update_op, batch_train)
-                eval(embedder_train.summary, batch_train, True)
+                eval(inputs_train, embedder_train.summary_update_op, batch_train,
+                     summary_update=True)
+                eval(inputs_train, embedder_train.summary, batch_train, True)
 
                 batch_val = batch_generator.next_val_batch()
-                eval(embedder_val.summary_update_op, batch_val)
-                eval(embedder_val.summary, batch_val, True)
+                eval(inputs_validation, embedder_val.summary_update_op, batch_val,
+                     summary_update=True)
+                eval(inputs_validation, embedder_val.summary, batch_val, True)
 
                 summary_writer.flush()
 
