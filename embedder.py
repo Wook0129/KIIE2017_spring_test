@@ -110,16 +110,17 @@ def train_embedder(data, configuration):
     LOG_DIR = configuration.LOG_DIR
     model_save_filename = configuration.model_save_filename
     metadata_filename = configuration.metadata_filename
-    corruption_ratio = configuration.corruption_ratio
-    validation_corrupt = configuration.validation_corrupt
+    corruption_ratio_train = configuration.corruption_ratio_train
+    corruption_ratio_validation = configuration.corruption_ratio_validation
+
 
     data_handler = DataHandler(data)  # Pandas format data
     num_of_vars = data_handler.num_of_vars
     batch_generator = TrainValBatchGenerator(
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size, data_handler=data_handler,
-        corruption_ratio=corruption_ratio,
-        validation_corrupt=validation_corrupt
+        corruption_ratio_train=corruption_ratio_train,
+        corruption_ratio_validation = corruption_ratio_validation
         )
 
     sess_config = tf.ConfigProto()

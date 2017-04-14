@@ -4,7 +4,7 @@ import numpy as np
 class TrainValBatchGenerator:
 
     def __init__(self, val_ratio=0.2, *, train_batch_size, val_batch_size, data_handler,
-                 corruption_ratio, validation_corrupt):
+                 corruption_ratio_train, corruption_ratio_validation):
         self._data = data_handler.data
         train_idx, val_idx = self._train_val_idx_split(val_ratio)
         self._train_batch_generator = BatchGenerator(self._data.loc[train_idx],
@@ -14,11 +14,11 @@ class TrainValBatchGenerator:
                                                    val_batch_size,
                                                    data_handler.var_idx_to_value_idxs,)
         self.num_of_vars = self._data.shape[1]
-        self.num_corruption_train = int(self.num_of_vars * corruption_ratio)
-        if validation_corrupt:
-            self.num_corruption_validation = self.num_corruption_train
-        else:
-            self.num_corruption_validation = 0
+        self.num_corruption_train = int(self.num_of_vars * corruption_ratio_train)
+
+        self.num_corruption_validation = int(self.num_of_vars *
+                                             corruption_ratio_validation)
+
         self.proportion_of_values_by_var = data_handler.proportion_of_values_by_var
 
 
